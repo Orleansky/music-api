@@ -4,6 +4,7 @@ import (
 	"Anastasia/songs/internal/api"
 	"Anastasia/songs/internal/repository"
 	"Anastasia/songs/internal/services"
+	"log"
 	"net/http"
 	"os"
 
@@ -21,10 +22,6 @@ import (
 //	@BasePath	/api/v1
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		logrus.WithError(err).Fatalf("Error loading .env file")
-	}
 
 	db, err := repository.NewStorage(repository.Config{
 		Host:     os.Getenv("DB_HOST"),
@@ -53,6 +50,16 @@ func main() {
 }
 
 func init() {
-	logrus.SetLevel(logrus.InfoLevel)
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error loading .env file")
+	}
+
+	logLevel := os.Getenv("LOG_LEVEL")
+	level, err := logrus.ParseLevel(logLevel)
+	if err != nil {
+		log.Fatalf("Invalid log level: %v", err)
+	}
+	logrus.SetLevel(level)
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 }
