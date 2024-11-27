@@ -114,7 +114,7 @@ func (s *SongRepo) DeleteSong(id int) error {
 		return err
 	}
 
-	err = s.checkGroup(groupId)
+	err = s.checkGroupUsed(groupId)
 	if err != nil {
 		return err
 	}
@@ -128,36 +128,18 @@ func (s *SongRepo) UpdateSong(song models.Songs) error {
 	logrus.WithField("song", song).Debug("Updating song")
 
 	var groupId int
+	var err error
 	if song.Group != "" {
-		row := s.db.QueryRow(context.Background(), `
-			INSERT INTO groups (name)
-			VALUES ($1)
-			ON CONFLICT (name)
-			DO NOTHING
-			RETURNING id;
-		`, song.Group)
-
-		err := row.Scan(&groupId)
+		groupId, err = s.checkGroupExists(song.Group)
 		if err != nil {
-			if err.Error() == "no rows in result set" {
-				err = s.db.QueryRow(context.Background(), `
-					SELECT id FROM groups WHERE name = $1
-				`, song.Group).Scan(&groupId)
-				if err != nil {
-					logrus.WithError(err).Error("Failed to get new group ID")
-					return err
-				}
-			} else {
-				logrus.WithError(err).Error("Failed to insert group")
-				return err
-			}
+			return err
 		}
 	}
 
 	row := s.db.QueryRow(context.Background(), `
 	SELECT group_id FROM songs
 	WHERE id = $1
-`, song.ID)
+	`, song.ID)
 
 	query := "UPDATE songs SET "
 	var args []interface{}
@@ -208,9 +190,9 @@ func (s *SongRepo) UpdateSong(song models.Songs) error {
 	query += " WHERE id = $" + strconv.Itoa(argIndex)
 	args = append(args, song.ID)
 
-	_, err := s.db.Exec(context.Background(), query, args...)
+	_, err = s.db.Exec(context.Background(), query, args...)
 	if err != nil {
-		logrus.WithError(err).Error("Failed to update song")
+		logrus.WithError(err).Error("Failed to update song", query)
 		return err
 	}
 
@@ -220,7 +202,7 @@ func (s *SongRepo) UpdateSong(song models.Songs) error {
 		logrus.WithError(err).Error("Failed to get current group ID")
 	}
 
-	err = s.checkGroup(currentGroupId)
+	err = s.checkGroupUsed(currentGroupId)
 	if err != nil {
 		return err
 	}
@@ -233,29 +215,9 @@ func (s *SongRepo) UpdateSong(song models.Songs) error {
 func (s *SongRepo) CreateSong(song models.Songs) error {
 	logrus.WithField("song", song).Debug("Creating song")
 
-	row := s.db.QueryRow(context.Background(), `
-		INSERT INTO groups (name)
-		VALUES ($1)
-		ON CONFLICT (name)
-		DO NOTHING
-		RETURNING id;
-	`, song.Group)
-
-	var groupId int
-	err := row.Scan(&groupId)
+	groupId, err := s.checkGroupExists(song.Group)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
-			err = s.db.QueryRow(context.Background(), `
-                SELECT id FROM groups WHERE name = $1
-            `, song.Group).Scan(&groupId)
-			if err != nil {
-				logrus.WithError(err).Error("Failed to get group ID")
-				return err
-			}
-		} else {
-			logrus.WithError(err).Error("Failed to insert group")
-			return err
-		}
+		return err
 	}
 
 	_, err = s.db.Exec(context.Background(), `
@@ -271,7 +233,7 @@ func (s *SongRepo) CreateSong(song models.Songs) error {
 	return nil
 }
 
-func (s *SongRepo) checkGroup(groupId int) error {
+func (s *SongRepo) checkGroupUsed(groupId int) error {
 	row := s.db.QueryRow(context.Background(), `
 		SELECT COUNT(id) FROM songs
 		WHERE group_id = $1
@@ -296,4 +258,32 @@ func (s *SongRepo) checkGroup(groupId int) error {
 		}
 	}
 	return nil
+}
+
+func (s *SongRepo) checkGroupExists(groupName string) (int, error) {
+	row := s.db.QueryRow(context.Background(), `
+			INSERT INTO groups (name)
+			VALUES ($1)
+			ON CONFLICT (name)
+			DO NOTHING
+			RETURNING id;
+	`, groupName)
+
+	var groupId int
+	err := row.Scan(&groupId)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			err = s.db.QueryRow(context.Background(), `
+					SELECT id FROM groups WHERE name = $1
+				`, groupName).Scan(&groupId)
+			if err != nil {
+				logrus.WithError(err).Error("Failed to get new group ID")
+				return 0, err
+			}
+		} else {
+			logrus.WithError(err).Error("Failed to insert group")
+			return 0, err
+		}
+	}
+	return groupId, nil
 }
