@@ -13,12 +13,14 @@ type SongRepo struct {
 	db *pgxpool.Pool
 }
 
+// Создаёт новый экземпляр репозитория
 func NewSongRepo(db *pgxpool.Pool) *SongRepo {
 	return &SongRepo{
 		db: db,
 	}
 }
 
+// Получение данных библиотеки с фильтрацией по всем полям и пагинацией
 func (s *SongRepo) Songs(filters models.Songs, page, pageSize int) ([]models.Songs, error) {
 	logrus.WithFields(logrus.Fields{
 		"filters":  filters,
@@ -73,6 +75,7 @@ func (s *SongRepo) Songs(filters models.Songs, page, pageSize int) ([]models.Son
 	return songs, nil
 }
 
+// Получение текста песни с пагинацией по куплетам
 func (s *SongRepo) SongByID(id int) (string, error) {
 	logrus.WithField("id", id).Debug("Fetching song by ID")
 
@@ -94,6 +97,7 @@ func (s *SongRepo) SongByID(id int) (string, error) {
 	return lyrics, nil
 }
 
+// Удаление песни
 func (s *SongRepo) DeleteSong(id int) error {
 	logrus.WithField("id", id).Debug("Deleting song")
 
@@ -110,33 +114,16 @@ func (s *SongRepo) DeleteSong(id int) error {
 		return err
 	}
 
-	row = s.db.QueryRow(context.Background(), `
-		SELECT COUNT(id) FROM songs
-		WHERE group_id = $1
-	`, groupId)
-
-	var count int
-	err = row.Scan(&count)
+	err = s.checkGroup(groupId)
 	if err != nil {
-		logrus.WithError(err).Error("Failed to count songs in group")
 		return err
-	}
-
-	if count == 0 {
-		_, err = s.db.Exec(context.Background(), `
-			DELETE FROM groups
-			WHERE id = $1
-		`, groupId)
-		if err != nil {
-			logrus.WithError(err).Error("Failed to delete group")
-			return err
-		}
 	}
 
 	logrus.WithField("groupId", groupId).Debug("Song deleted successfully")
 	return nil
 }
 
+// Изменение данных песни
 func (s *SongRepo) UpdateSong(song models.Songs) error {
 	logrus.WithField("song", song).Debug("Updating song")
 
@@ -157,7 +144,7 @@ func (s *SongRepo) UpdateSong(song models.Songs) error {
 					SELECT id FROM groups WHERE name = $1
 				`, song.Group).Scan(&groupId)
 				if err != nil {
-					logrus.WithError(err).Error("Failed to get group ID")
+					logrus.WithError(err).Error("Failed to get new group ID")
 					return err
 				}
 			} else {
@@ -166,6 +153,11 @@ func (s *SongRepo) UpdateSong(song models.Songs) error {
 			}
 		}
 	}
+
+	row := s.db.QueryRow(context.Background(), `
+	SELECT group_id FROM songs
+	WHERE id = $1
+`, song.ID)
 
 	query := "UPDATE songs SET "
 	var args []interface{}
@@ -222,10 +214,22 @@ func (s *SongRepo) UpdateSong(song models.Songs) error {
 		return err
 	}
 
+	var currentGroupId int
+	err = row.Scan(&currentGroupId)
+	if err != nil {
+		logrus.WithError(err).Error("Failed to get current group ID")
+	}
+
+	err = s.checkGroup(currentGroupId)
+	if err != nil {
+		return err
+	}
+
 	logrus.WithField("song", song).Debug("Song updated successfully")
 	return nil
 }
 
+// Добавление новой песни
 func (s *SongRepo) CreateSong(song models.Songs) error {
 	logrus.WithField("song", song).Debug("Creating song")
 
@@ -264,5 +268,32 @@ func (s *SongRepo) CreateSong(song models.Songs) error {
 	}
 
 	logrus.WithField("song", song).Debug("Song created successfully")
+	return nil
+}
+
+func (s *SongRepo) checkGroup(groupId int) error {
+	row := s.db.QueryRow(context.Background(), `
+		SELECT COUNT(id) FROM songs
+		WHERE group_id = $1
+	`, groupId)
+
+	var count int
+	err := row.Scan(&count)
+	if err != nil {
+		logrus.WithError(err).Error("Failed to count songs in group")
+		return err
+	}
+
+	// Во избежание хранения избыточной информации в таблице groups удаляем неиспользуемые строки таблицы
+	if count == 0 {
+		_, err = s.db.Exec(context.Background(), `
+			DELETE FROM groups
+			WHERE id = $1
+		`, groupId)
+		if err != nil {
+			logrus.WithError(err).Error("Failed to delete group")
+			return err
+		}
+	}
 	return nil
 }

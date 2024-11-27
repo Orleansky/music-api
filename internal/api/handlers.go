@@ -107,6 +107,7 @@ func (api *API) songByIDHandler(w http.ResponseWriter, r *http.Request) {
 
 	lyricsPaginated := strings.Split(lyrics, "\n\n")
 
+	// Если значение verseNum некорректно, метод будет выводить полный текст песни
 	if verseNum == 0 || verseNum > len(lyricsPaginated) {
 		err = json.NewEncoder(w).Encode(lyrics)
 	} else {
