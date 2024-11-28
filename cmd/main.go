@@ -18,8 +18,7 @@ import (
 //	@version		1.0
 //	@description	API for online songs library.
 
-//	@host		localhost:8080
-//	@BasePath	/api/v1
+//	@host	localhost:8080
 
 func main() {
 

@@ -144,7 +144,9 @@ func (api *API) deleteSongHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logrus.WithError(err).Error("Failed to delete song")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // @Summary		Update a song by ID
@@ -250,5 +252,8 @@ func (api *API) createSongHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logrus.WithError(err).Error("Failed to create song")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	w.WriteHeader(http.StatusCreated)
 }
